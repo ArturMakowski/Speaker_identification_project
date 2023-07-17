@@ -4,7 +4,7 @@ setup(
     name='src',
     packages=find_packages(),
     version='0.1.0',
-    description='Speaker identification with Pytorch',
+    description='Speaker identification project',
     author='Artur Makowski',
     license='MIT',
 )

@@ -1,30 +1,144 @@
-# -*- coding: utf-8 -*-
-import click
-import logging
-from pathlib import Path
-from dotenv import find_dotenv, load_dotenv
+import torch
+import torchaudio
+from torch.utils.data import Subset, Dataset
+import numpy as np
+import json
 
 
-@click.command()
-@click.argument('input_filepath', type=click.Path(exists=True))
-@click.argument('output_filepath', type=click.Path())
-def main(input_filepath, output_filepath):
-    """ Runs data processing scripts to turn raw data from (../raw) into
-        cleaned data ready to be analyzed (saved in ../processed).
+
+class VoxCeleb1IdentificationUnified(Dataset):
+    
+    def __init__(self, voxceleb1_dataset, present_audio_files = []):
+        self.voxceleb1_dataset = voxceleb1_dataset
+        self.voxceleb1_dataset = Subset(self.voxceleb1_dataset, present_audio_files)
+        
+        self.num_samples_per_clip = 40000   
+        self.mel_spectrogram_transformation = torchaudio.transforms.MelSpectrogram(
+            sample_rate=4000,
+            n_fft=1024,
+            hop_length=512,
+            n_mels=64)
+
+    def __getitem__(self, idx):
+        waveform, _, target, _ = self.voxceleb1_dataset[idx]
+        waveform = torchaudio.transforms.Resample(16000, 4000)(waveform)
+        waveform = self._right_zero_pad(self._cut_if_necessary(waveform))
+        mel_spec = self.mel_spectrogram_transformation(waveform)
+        return mel_spec, target
+    
+    def __len__(self):
+        return len(self.voxceleb1_dataset)
+    
+    def _right_zero_pad(self, signal):
+      length_signal = signal.shape[1]
+      if length_signal < self.num_samples_per_clip:
+          num_missing_samples = self.num_samples_per_clip - length_signal
+          signal = torch.nn.functional.pad(signal, (0, num_missing_samples))
+      return signal
+    
+    def _cut_if_necessary(self, signal):
+      if signal.shape[1] > self.num_samples_per_clip:
+          signal = signal[:, :self.num_samples_per_clip]
+      return signal
+  
+  
+class TripletVoxCeleb1ID(Dataset):
     """
-    logger = logging.getLogger(__name__)
-    logger.info('making final data set from raw data')
+    Train: For each sample (anchor) randomly chooses a positive and negative samples
+    Test: Creates fixed triplets for testing
+    """
 
+    def __init__(self, voxceleb1_dataset, train=True):
+        self.voxceleb1_dataset = voxceleb1_dataset
+        self.train = train
+        # self.mel_spectrogram_transformation = torchaudio.transforms.MelSpectrogram(
+        #     sample_rate=4000,
+        #     n_fft=1024,
+        #     hop_length=512,
+        #     n_mels=64)
+        # self.num_samples_per_clip = 20000 # 5 sec
 
-if __name__ == '__main__':
-    log_fmt = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-    logging.basicConfig(level=logging.INFO, format=log_fmt)
+        if self.train:
+            self.train_labels = torch.tensor([self.voxceleb1_dataset[i][1]
+                                              for i in range(len(self.voxceleb1_dataset))])
+            
+            self.labels_set = set(self.train_labels.numpy())
+            self.label_to_indices = {label: np.where(self.train_labels.numpy() == label)[0]
+                                     for label in self.labels_set}
 
-    # not used in this stub but often useful for finding various files
-    project_dir = Path(__file__).resolve().parents[2]
+        else:
+            self.test_labels = torch.tensor([self.voxceleb1_dataset[i][1] 
+                                              for i in range(len(self.voxceleb1_dataset))])
+        
+            # generate fixed triplets for testing
+            self.labels_set = set(self.test_labels.numpy())
+            self.label_to_indices = {label: np.where(self.test_labels.numpy() == label)[0]
+                                     for label in self.labels_set}
 
-    # find .env automagically by walking up directories until it's found, then
-    # load up the .env entries as environment variables
-    load_dotenv(find_dotenv())
+            random_state = np.random.RandomState(29)
 
-    main()
+            triplets = [[i,
+                         random_state.choice(self.label_to_indices[self.test_labels[i].item()]),
+                         random_state.choice(self.label_to_indices[
+                                                 np.random.choice(
+                                                     list(self.labels_set - set([self.test_labels[i].item()]))
+                                                 )
+                                             ])
+                         ]
+                        for i in range(len(self.test_labels))]
+            self.test_triplets = triplets
+
+    def __getitem__(self, index):
+        if self.train:
+            # audio1, label1 = self._right_zero_pad(self._cut_if_necessary(self.voxceleb1_dataset[index][0])), self.train_labels[index].item()
+            audio1, label1 = self.voxceleb1_dataset[index][0], self.train_labels[index].item()
+            positive_index = index
+            while positive_index == index:
+                positive_index = np.random.choice(self.label_to_indices[label1])
+                #! 99% that for one particular speaker there is just 1 recording 
+                #TODO Create histogram of number of samples assigned to one speaker
+            negative_label = np.random.choice(list(self.labels_set - set([label1])))
+            negative_index = np.random.choice(self.label_to_indices[negative_label])
+            # audio2 = self._right_zero_pad(self._cut_if_necessary(self.voxceleb1_dataset[positive_index][0]))
+            # audio3 = self._right_zero_pad(self._cut_if_necessary(self.voxceleb1_dataset[negative_index][0]))
+            audio2 = self.voxceleb1_dataset[positive_index][0]
+            audio3 = self.voxceleb1_dataset[negative_index][0]
+        else:
+            # audio1 = self._right_zero_pad(self._cut_if_necessary(self.voxceleb1_dataset[self.test_triplets[index][0]][0]))
+            # audio2 = self._right_zero_pad(self._cut_if_necessary(self.voxceleb1_dataset[self.test_triplets[index][1]][0]))
+            # audio3 = self._right_zero_pad(self._cut_if_necessary(self.voxceleb1_dataset[self.test_triplets[index][2]][0]))
+            audio1 = self.voxceleb1_dataset[self.test_triplets[index][0]][0]
+            audio2 = self.voxceleb1_dataset[self.test_triplets[index][1]][0]
+            audio3 = self.voxceleb1_dataset[self.test_triplets[index][2]][0]
+                                          
+        # spec1 = self.mel_spectrogram_transformation(audio1)
+        # spec2 = self.mel_spectrogram_transformation(audio2)
+        # spec3 = self.mel_spectrogram_transformation(audio3)   
+        spec1 = audio1
+        spec2 = audio2
+        spec3 = audio3 
+
+        return (spec1, spec2, spec3), []
+
+    def __len__(self):
+        return len(self.voxceleb1_dataset)
+    
+if __name__ == "__main__":
+    
+    train_dataset = torchaudio.datasets.VoxCeleb1Identification('/mnt/d/VoxCeleb1Identification/data', subset='train', download=False)
+    test_dataset = torchaudio.datasets.VoxCeleb1Identification('/mnt/d/VoxCeleb1Identification/data', subset='test', download=False)
+
+    present_train_audio_files = json.load(open("present_train_audio_files.json", 'r'))
+    present_test_audio_files = json.load(open("present_test_audio_files.json", 'r'))
+    
+    train_subset = VoxCeleb1IdentificationUnified(train_dataset, present_train_audio_files[:10000])
+    test_subset = VoxCeleb1IdentificationUnified(train_dataset, present_test_audio_files[:1024])
+    
+    cuda = torch.cuda.is_available()
+    batch_size = 128
+    kwargs = {'num_workers': 1, 'pin_memory': True} if cuda else {}
+    
+    triplet_dataset_train = TripletVoxCeleb1ID(train_subset, train=True)
+    triplet_dataset_test = TripletVoxCeleb1ID(test_subset, train=False)
+    triplet_train_loader = torch.utils.data.DataLoader(triplet_dataset_train, batch_size=batch_size, shuffle=True, drop_last=True, **kwargs) # type: ignore
+    triplet_test_loader = torch.utils.data.DataLoader(triplet_dataset_test, batch_size=batch_size, shuffle=False, drop_last=True, **kwargs) # type: ignore
