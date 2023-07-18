@@ -1,12 +1,15 @@
 import torch
+import torchaudio
+import json
 import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
 from tqdm import tqdm
 from torch.optim import lr_scheduler
 import torch.optim as optim
-from models import SiameseEmbeddingModel, TripletNet
+from src.models.models import SiameseEmbeddingModel, TripletNet
 import joblib
+from src.data.make_dataset import TripletVoxCeleb1ID, VoxCeleb1IdentificationUnified
 
 def fit(train_loader, val_loader, model, loss_fn, optimizer, scheduler, n_epochs, cuda, log_interval, metrics=[],
         start_epoch=0):
@@ -170,16 +173,26 @@ class TripletLoss(nn.Module):
         return losses.mean() if size_average else losses.sum()
     
 if __name__ == "__main__":
+
     cuda = torch.cuda.is_available()
     batch_size = 128
     kwargs = {'num_workers': 1, 'pin_memory': True} if cuda else {}
+    margin = 1.
     
-    triplet_dataset_train = TripletVoxCeleb1ID(train_subset, train=True)
+    # Set up data loaders
+    train_dataset = torchaudio.datasets.VoxCeleb1Identification('/mnt/d/VoxCeleb1Identification/data', subset='train', download=False)
+    test_dataset = torchaudio.datasets.VoxCeleb1Identification('/mnt/d/VoxCeleb1Identification/data', subset='test', download=False)
+
+    present_train_audio_files = json.load(open("../data/present_train_audio_files.json", 'r'))
+    present_test_audio_files = json.load(open("../data/present_test_audio_files.json", 'r'))
+    
+    triplet_dataset_train = TripletVoxCeleb1ID(VoxCeleb1IdentificationUnified(train_dataset, present_train_audio_files[:10000]), train=True)
+    triplet_dataset_test = TripletVoxCeleb1ID(VoxCeleb1IdentificationUnified(train_dataset, present_test_audio_files[:1024]), train=False)
+    
     triplet_train_loader = torch.utils.data.DataLoader(triplet_dataset_train, batch_size=batch_size, shuffle=True, drop_last=True, **kwargs) # type: ignore
     triplet_test_loader = torch.utils.data.DataLoader(triplet_dataset_test, batch_size=batch_size, shuffle=False, drop_last=True, **kwargs) # type: ignore
 
     # Set up the network and training parameters
-    margin = 1.
     embedding_net = SiameseEmbeddingModel()
     model = TripletNet(embedding_net)
     if cuda:
