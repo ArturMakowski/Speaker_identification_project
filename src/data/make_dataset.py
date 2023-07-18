@@ -51,12 +51,6 @@ class TripletVoxCeleb1ID(Dataset):
     def __init__(self, voxceleb1_dataset, train=True):
         self.voxceleb1_dataset = voxceleb1_dataset
         self.train = train
-        # self.mel_spectrogram_transformation = torchaudio.transforms.MelSpectrogram(
-        #     sample_rate=4000,
-        #     n_fft=1024,
-        #     hop_length=512,
-        #     n_mels=64)
-        # self.num_samples_per_clip = 20000 # 5 sec
 
         if self.train:
             self.train_labels = torch.tensor([self.voxceleb1_dataset[i][1]
@@ -90,7 +84,7 @@ class TripletVoxCeleb1ID(Dataset):
 
     def __getitem__(self, index):
         if self.train:
-            # audio1, label1 = self._right_zero_pad(self._cut_if_necessary(self.voxceleb1_dataset[index][0])), self.train_labels[index].item()
+
             audio1, label1 = self.voxceleb1_dataset[index][0], self.train_labels[index].item()
             positive_index = index
             while positive_index == index:
@@ -99,21 +93,14 @@ class TripletVoxCeleb1ID(Dataset):
                 #TODO Create histogram of number of samples assigned to one speaker
             negative_label = np.random.choice(list(self.labels_set - set([label1])))
             negative_index = np.random.choice(self.label_to_indices[negative_label])
-            # audio2 = self._right_zero_pad(self._cut_if_necessary(self.voxceleb1_dataset[positive_index][0]))
-            # audio3 = self._right_zero_pad(self._cut_if_necessary(self.voxceleb1_dataset[negative_index][0]))
+
             audio2 = self.voxceleb1_dataset[positive_index][0]
             audio3 = self.voxceleb1_dataset[negative_index][0]
         else:
-            # audio1 = self._right_zero_pad(self._cut_if_necessary(self.voxceleb1_dataset[self.test_triplets[index][0]][0]))
-            # audio2 = self._right_zero_pad(self._cut_if_necessary(self.voxceleb1_dataset[self.test_triplets[index][1]][0]))
-            # audio3 = self._right_zero_pad(self._cut_if_necessary(self.voxceleb1_dataset[self.test_triplets[index][2]][0]))
             audio1 = self.voxceleb1_dataset[self.test_triplets[index][0]][0]
             audio2 = self.voxceleb1_dataset[self.test_triplets[index][1]][0]
             audio3 = self.voxceleb1_dataset[self.test_triplets[index][2]][0]
                                           
-        # spec1 = self.mel_spectrogram_transformation(audio1)
-        # spec2 = self.mel_spectrogram_transformation(audio2)
-        # spec3 = self.mel_spectrogram_transformation(audio3)   
         spec1 = audio1
         spec2 = audio2
         spec3 = audio3 
