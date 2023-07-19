@@ -41,3 +41,29 @@ def test_getitem_test(mock_dataset):
 def test_len(mock_dataset):
     dataset = TripletVoxCeleb1ID(mock_dataset, train=True)
     assert len(dataset) == 100
+
+
+
+def test_TripletVoxCeleb1ID_triplet_generation():
+    # Mock dataset with 10 samples, each having an index as data and label
+    mock_data = [(i, i%2) for i in range(10)]  # Labels are alternating 0 and 1
+    
+    # Initialize TripletVoxCeleb1ID with mock_data in test mode
+    triplet_dataset = TripletVoxCeleb1ID(mock_data, train=False)
+    
+    # Test triplet generation
+    for triplet in triplet_dataset.test_triplets:
+        indices = triplet['indices']
+        labels = triplet['labels']
+        
+        # Check if anchor and positive samples have the same label
+        assert labels[0] == labels[1], "Anchor and positive samples do not have the same label"
+        
+        # Check if anchor and negative samples have different labels
+        assert labels[0] != labels[2], "Anchor and negative samples have the same label"
+        
+        # Check if all indices in a triplet are unique
+        assert len(set(indices)) == len(indices), "All indices in a triplet are not unique"
+
+
+

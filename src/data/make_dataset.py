@@ -67,20 +67,30 @@ class TripletVoxCeleb1ID(Dataset):
             # generate fixed triplets for testing
             self.labels_set = set(self.test_labels.numpy())
             self.label_to_indices = {label: np.where(self.test_labels.numpy() == label)[0]
-                                     for label in self.labels_set}
+                                    for label in self.labels_set}
 
             random_state = np.random.RandomState(29)
 
-            triplets = [[i,
-                         random_state.choice(self.label_to_indices[self.test_labels[i].item()]),
-                         random_state.choice(self.label_to_indices[
-                                                 np.random.choice(
-                                                     list(self.labels_set - set([self.test_labels[i].item()]))
-                                                 )
-                                             ])
-                         ]
+            triplets = [{'indices': [i,
+                                     random_state.choice([idx for idx in self.label_to_indices[self.test_labels[i].item()] if idx != i]),
+                                     random_state.choice(self.label_to_indices[
+                                                             np.random.choice(
+                                                                 list(self.labels_set - set([self.test_labels[i].item()]))
+                                                             )
+                                                         ])
+                                    ],
+                         'labels': [self.test_labels[i].item(),
+                                    self.test_labels[random_state.choice([idx for idx in self.label_to_indices[self.test_labels[i].item()] if idx != i])].item(),
+                                    self.test_labels[random_state.choice(self.label_to_indices[
+                                                                            np.random.choice(
+                                                                                list(self.labels_set - set([self.test_labels[i].item()]))
+                                                                            )
+                                                                        ])].item()
+                                    ]
+                        }
                         for i in range(len(self.test_labels))]
             self.test_triplets = triplets
+
 
     def __getitem__(self, index):
         if self.train:
@@ -96,16 +106,15 @@ class TripletVoxCeleb1ID(Dataset):
 
             audio2 = self.voxceleb1_dataset[positive_index][0]
             audio3 = self.voxceleb1_dataset[negative_index][0]
+            
+            return (audio1, audio2, audio3), [label1, label1, negative_label]
         else:
-            audio1 = self.voxceleb1_dataset[self.test_triplets[index][0]][0]
-            audio2 = self.voxceleb1_dataset[self.test_triplets[index][1]][0]
-            audio3 = self.voxceleb1_dataset[self.test_triplets[index][2]][0]
-                                          
-        spec1 = audio1
-        spec2 = audio2
-        spec3 = audio3 
+            audio1 = self.voxceleb1_dataset[self.test_triplets[index]['indices'][0]][0]
+            audio2 = self.voxceleb1_dataset[self.test_triplets[index]['indices'][1]][0]
+            audio3 = self.voxceleb1_dataset[self.test_triplets[index]['indices'][2]][0]
+            
+            return (audio1, audio2, audio3), self.test_triplets[index]["labels"]
 
-        return (spec1, spec2, spec3), []
 
     def __len__(self):
         return len(self.voxceleb1_dataset)
