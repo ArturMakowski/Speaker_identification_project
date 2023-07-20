@@ -45,7 +45,7 @@ class VoxCeleb1IdentificationUnified(Dataset):
 class TripletVoxCeleb1ID(Dataset):
     """
     Train: For each sample (anchor) randomly chooses a positive and negative samples
-    Test: Creates fixed triplets for testing
+    Test: Creates triplets for testing
     """
 
     def __init__(self, voxceleb1_dataset, train=True):
@@ -64,12 +64,12 @@ class TripletVoxCeleb1ID(Dataset):
             self.test_labels = torch.tensor([self.voxceleb1_dataset[i][1] 
                                               for i in range(len(self.voxceleb1_dataset))])
         
-            # generate fixed triplets for testing
+            # generate triplets for testing
             self.labels_set = set(self.test_labels.numpy())
             self.label_to_indices = {label: np.where(self.test_labels.numpy() == label)[0]
                                     for label in self.labels_set}
 
-            random_state = np.random.RandomState(29)
+            random_state = np.random.RandomState()
 
             triplets = [{'indices': [i,
                                      random_state.choice([idx for idx in self.label_to_indices[self.test_labels[i].item()] if idx != i]),
@@ -88,7 +88,7 @@ class TripletVoxCeleb1ID(Dataset):
                                                                         ])].item()
                                     ]
                         }
-                        for i in range(len(self.test_labels))]
+                        for i in range(len(self.test_labels)) if len(self.label_to_indices[self.test_labels[i].item()]) > 1]
             self.test_triplets = triplets
 
 
@@ -99,7 +99,7 @@ class TripletVoxCeleb1ID(Dataset):
             positive_index = index
             while positive_index == index:
                 positive_index = np.random.choice(self.label_to_indices[label1])
-                #! 99% that for one particular speaker there is just 1 recording 
+                
                 #TODO Create histogram of number of samples assigned to one speaker
             negative_label = np.random.choice(list(self.labels_set - set([label1])))
             negative_index = np.random.choice(self.label_to_indices[negative_label])
@@ -117,7 +117,11 @@ class TripletVoxCeleb1ID(Dataset):
 
 
     def __len__(self):
-        return len(self.voxceleb1_dataset)
+        if self.train:
+            return len(self.train_labels)
+        else:
+            return len(self.test_triplets)
+
     
 if __name__ == "__main__":
     
