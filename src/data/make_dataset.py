@@ -7,6 +7,17 @@ import json
 
 
 class VoxCeleb1IdentificationUnified(Dataset):
+    """
+    Unified VoxCeleb1 dataset that returns mel spectrograms and target labels.
+            
+        args:
+            voxceleb1_dataset: VoxCeleb1 dataset
+            present_audio_files: list of audio files present in the dataset
+        
+        returns:        
+            mel_spec: Mel spectrogram of the audio file
+            target: target label of the audio file
+    """
     
     def __init__(self, voxceleb1_dataset, present_audio_files = []):
         self.voxceleb1_dataset = voxceleb1_dataset
@@ -44,8 +55,13 @@ class VoxCeleb1IdentificationUnified(Dataset):
   
 class TripletVoxCeleb1ID(Dataset):
     """
-    Train: For each sample (anchor) randomly chooses a positive and negative samples
-    Test: Creates triplets for testing
+        Triplet dataset that takes a dataset and generates triplets from it.
+        
+        args:
+            voxceleb1_dataset: VoxCeleb1 dataset
+            train: if train or test dataset should be generated
+        returns:
+            triplets: list containing triplets of mel spectrograms and target label (if train)
     """
 
     def __init__(self, voxceleb1_dataset, train=True):
